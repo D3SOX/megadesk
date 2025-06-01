@@ -361,6 +361,70 @@ button:
             id: megadesk_moving
             state: ON
 
+  # Save current position to memory slots (2-10)
+  - platform: template
+    name: "Save Position 02"
+    icon: "mdi:content-save-outline"
+    on_press:
+      then:
+        - uart.write: "<S0,2."
+        
+  - platform: template
+    name: "Save Position 03"
+    icon: "mdi:content-save-outline"
+    on_press:
+      then:
+        - uart.write: "<S0,3."
+        
+  - platform: template
+    name: "Save Position 04"
+    icon: "mdi:content-save-outline"
+    on_press:
+      then:
+        - uart.write: "<S0,4."
+        
+  - platform: template
+    name: "Save Position 05"
+    icon: "mdi:content-save-outline"
+    on_press:
+      then:
+        - uart.write: "<S0,5."
+        
+  - platform: template
+    name: "Save Position 06"
+    icon: "mdi:content-save-outline"
+    on_press:
+      then:
+        - uart.write: "<S0,6."
+        
+  - platform: template
+    name: "Save Position 07"
+    icon: "mdi:content-save-outline"
+    on_press:
+      then:
+        - uart.write: "<S0,7."
+        
+  - platform: template
+    name: "Save Position 08"
+    icon: "mdi:content-save-outline"
+    on_press:
+      then:
+        - uart.write: "<S0,8."
+        
+  - platform: template
+    name: "Save Position 09"
+    icon: "mdi:content-save-outline"
+    on_press:
+      then:
+        - uart.write: "<S0,9."
+        
+  - platform: template
+    name: "Save Position 10"
+    icon: "mdi:content-save-outline"
+    on_press:
+      then:
+        - uart.write: "<S0,10."
+
   # Configuration buttons with better icons
   - platform: template
     name: "Toggle Minimum Desk Height"
