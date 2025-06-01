@@ -1,0 +1,413 @@
+esp32:
+  board: esp32-c3-devkitm-1
+  framework:
+    type: esp-idf
+    version: recommended
+
+esphome:
+  name: megadesk
+  friendly_name: "Megadesk Controller"
+  comment: ESPHome Device controlling Megadesk controller
+  platformio_options:
+    board_build.flash_mode: dio # If you don't specify this using esp-idf framework, the device will boot-loop.
+  on_boot:
+    priority: -100
+    then:
+      - delay: 1000ms
+      - uart.write: "<C0.0." # reports current position
+      
+      # Read all memory positions 2-10
+      - delay: 1000ms
+      - uart.write: "<R0.2." # read eeprom slot 2 - position 2
+      - delay: 1000ms
+      - uart.write: "<R0.3." # read eeprom slot 3 - position 3
+      - delay: 1000ms
+      - uart.write: "<R0.4." # read eeprom slot 4 - position 4
+      - delay: 1000ms
+      - uart.write: "<R0.5." # read eeprom slot 5 - position 5
+      - delay: 1000ms
+      - uart.write: "<R0.6." # read eeprom slot 6 - position 6
+      - delay: 1000ms
+      - uart.write: "<R0.7." # read eeprom slot 7 - position 7
+      - delay: 1000ms
+      - uart.write: "<R0.8." # read eeprom slot 8 - position 8
+      - delay: 1000ms
+      - uart.write: "<R0.9." # read eeprom slot 9 - position 9
+      - delay: 1000ms
+      - uart.write: "<R0.10." # read eeprom slot 10 - position 10
+
+      - delay: 1000ms
+      - uart.write: "<R0.11." # read eeprom slot 11 - lowest position
+      - delay: 1000ms
+      - uart.write: "<R0.12." # read eeprom slot 12 - highest position
+
+logger:
+  # Use the ESP32-C3-MINI's native USB port for serial logging. Comment this out if you want to use the pin header.
+  # Seems buggy.
+  hardware_uart: USB_SERIAL_JTAG
+
+external_components:
+  # Remote source, use this one unless you are developing.
+  - source: github://gcormier/megadesk_companion/esphome@main
+    components: [megadesk]
+    refresh: 120s
+
+api:
+  password: ""
+
+ota:
+  - platform: esphome
+    password: "49cf86bdcdcbd56e989def6599cf98a1"
+
+# Change this, or have a secrets.yaml with your wifi information.
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  ap:
+    ssid: "Desk Fallback Hotspot"
+    password: "bPeBxxHHYaox"
+
+# If you want to control your desk from a web browser director, or using an API
+captive_portal:
+
+web_server:
+  port: 80
+
+###
+# Do not change these pins if you have a Megadesk Companion.
+# If you have a 3-pin megadesk, try swapping them in case of a mixup on RX/TX
+# when you soldered the wires.
+###
+uart:
+  id: uart_desk
+  baud_rate: 115200
+  tx_pin: GPIO6
+  rx_pin: GPIO7
+
+# Megadesk - Enhanced sensors with memory positions support
+sensor:
+  - platform: megadesk
+    max_height:
+      name: "Maximum Height (Raw)"
+      id: megadesk_max_height
+      internal: true
+      on_value:
+        then:
+          - component.update: megadesk_height_max_cm
+    min_height:
+      name: "Minimum Height (Raw)" 
+      id: megadesk_min_height
+      internal: true
+      on_value:
+        then:
+          - component.update: megadesk_height_min_cm
+          - component.update: megadesk_height_from_min_cm
+    raw_height:
+      name: "Raw Height"
+      id: megadesk_raw
+      on_value:
+        then:
+          # Update height sensors
+          - component.update: megadesk_height_cm
+          - component.update: megadesk_height_raw
+          - component.update: megadesk_height_slider_cm
+          - component.update: megadesk_height_from_min_cm
+          
+          # Update sensors that the table is idle
+          - binary_sensor.template.publish:
+              id: megadesk_moving
+              state: OFF
+          - cover.template.publish:
+              id: megadesk_controls
+              current_operation: IDLE
+    height_cm:
+      name: "Height (cm) - Platform"
+      id: megadesk_platform_cm
+      internal: true
+    height_inches:
+      name: "Height (in) - Platform"
+      id: megadesk_platform_inches
+      internal: true
+      
+  # Enhanced template sensors
+  - platform: template
+    name: "Current Height"
+    id: megadesk_height_cm
+    icon: "mdi:human-male-height"
+    lambda: |-
+      return ((((id(megadesk_raw).state - 299) * (119.38 - 58.42)) / (6914 - 299)) + 58.42);
+    unit_of_measurement: 'cm'
+    
+  - platform: template
+    name: "Minimum Height"
+    id: megadesk_height_min_cm
+    icon: "mdi:human-male-height-variant"
+    lambda: |-
+      return ((((id(megadesk_min_height).state - 299) * (119.38 - 58.42)) / (6914 - 299)) + 58.42);
+    unit_of_measurement: 'cm'
+    on_value:
+      then:
+        - component.update: megadesk_height_from_min_cm
+        
+  - platform: template
+    name: "Maximum Height"
+    id: megadesk_height_max_cm
+    icon: "mdi:human-male-height-variant"
+    lambda: |-
+      return ((((id(megadesk_max_height).state - 299) * (119.38 - 58.42)) / (6914 - 299)) + 58.42);
+    unit_of_measurement: 'cm'
+    
+  - platform: template
+    name: "Height from Minimum"
+    id: megadesk_height_from_min_cm
+    icon: "mdi:stairs-up"
+    lambda: |-
+      return id(megadesk_height_cm).state - id(megadesk_height_min_cm).state;
+    unit_of_measurement: 'cm'
+
+# Movement detection binary sensor
+binary_sensor:
+  - platform: template
+    id: megadesk_moving
+    icon: "mdi:motion"
+    device_class: moving
+    name: "Moving"
+
+# Cover control for Home Assistant integration
+cover:
+  - platform: template
+    id: megadesk_controls
+    icon: "mdi:gamepad"
+    name: "Controls"
+    lambda: |-
+      // heaps of spam on boot since these don't have values yet
+      if (id(megadesk_raw).state > 0 && id(megadesk_min_height).state > 0 && id(megadesk_max_height).state > 0) {
+        return ( id(megadesk_raw).state - id(megadesk_min_height).state ) / ( id(megadesk_max_height).state - id(megadesk_min_height).state );
+      }
+      return 0.0;
+    assumed_state: true
+    optimistic: false
+    open_action:
+      - cover.template.publish:
+          id: megadesk_controls
+          current_operation: OPENING
+      - uart.write: "<+308,0." # i find it raises -8 more than expected
+      - binary_sensor.template.publish:
+          id: megadesk_moving
+          state: ON
+    close_action:
+      - cover.template.publish:
+          id: megadesk_controls
+          current_operation: CLOSING
+      - uart.write: "<-295,0." # i find it lowers +5 more than expected
+      - binary_sensor.template.publish:
+          id: megadesk_moving
+          state: ON
+    stop_action:
+      - uart.write: "<+0,0."
+    has_position: true
+    position_action:
+      - cover.template.publish:
+          id: megadesk_controls
+          current_operation: !lambda |-
+            if (pos > id(megadesk_controls).position) {
+              return COVER_OPERATION_OPENING;
+            } else if (pos < id(megadesk_controls).position) {
+              return COVER_OPERATION_CLOSING;
+            }
+            return COVER_OPERATION_IDLE;
+      - uart.write: !lambda |-
+          char buf[20];
+          sprintf(buf, "<=%i,.", int(pos * 6914));
+          std::string s = buf;
+          return std::vector<unsigned char>( s.begin(), s.end() );
+      - binary_sensor.template.publish:
+          id: megadesk_moving
+          state: ON
+
+# Enhanced number controls with better integration
+number:
+  # Main height slider  
+  - platform: template
+    name: "Height Adjustment Slider"
+    id: megadesk_height_slider_cm
+    icon: "mdi:gamepad"
+    min_value: 58.42
+    max_value: 118.745
+    step: 0.53
+    mode: slider
+    update_interval: never
+    unit_of_measurement: 'cm'
+    #NewValue = (((OldValue - OldMin) * (NewMax - NewMin)) / (OldMax - OldMin)) + NewMin
+    lambda: |-
+      return ((((id(megadesk_raw).state - 299) * (119.38 - 58.42)) / (6914 - 299)) + 58.42);
+    set_action:
+      - number.set:
+          id: megadesk_height_raw
+          value: !lambda "return int((((x - 58.42) * (6914 - 299)) / (119.38 - 58.42)) + 299);"
+          
+  # Raw height control (internal)
+  - platform: template
+    name: "Current Height (raw)"
+    id: megadesk_height_raw
+    internal: true
+    min_value: 299
+    max_value: 6914
+    step: 1
+    update_interval: never
+    lambda: |-
+      return id(megadesk_raw).state;
+    set_action:
+      - uart.write: !lambda |-
+          char buf[20];
+          sprintf(buf, "<=%i,.", int(x));
+          std::string s = buf;
+          return std::vector<unsigned char>( s.begin(), s.end() );
+      - binary_sensor.template.publish:
+          id: megadesk_moving
+          state: ON
+
+# Enhanced buttons with better icons and memory position support
+button:
+  # Memory position buttons (2-10)
+  - platform: template
+    name: "Memory Position 02"
+    icon: "mdi:numeric-2-circle"
+    on_press:
+      then:
+        - uart.write: "<L0,2."
+        - binary_sensor.template.publish:
+            id: megadesk_moving
+            state: ON
+            
+  - platform: template
+    name: "Memory Position 03"
+    icon: "mdi:numeric-3-circle"
+    on_press:
+      then:
+        - uart.write: "<L0,3."
+        - binary_sensor.template.publish:
+            id: megadesk_moving
+            state: ON
+            
+  - platform: template
+    name: "Memory Position 04"
+    icon: "mdi:numeric-4-circle"
+    on_press:
+      then:
+        - uart.write: "<L0,4."
+        - binary_sensor.template.publish:
+            id: megadesk_moving
+            state: ON
+            
+  - platform: template
+    name: "Memory Position 05"
+    icon: "mdi:numeric-5-circle"
+    on_press:
+      then:
+        - uart.write: "<L0,5."
+        - binary_sensor.template.publish:
+            id: megadesk_moving
+            state: ON
+            
+  - platform: template
+    name: "Memory Position 06"
+    icon: "mdi:numeric-6-circle"
+    on_press:
+      then:
+        - uart.write: "<L0,6."
+        - binary_sensor.template.publish:
+            id: megadesk_moving
+            state: ON
+            
+  - platform: template
+    name: "Memory Position 07"
+    icon: "mdi:numeric-7-circle"
+    on_press:
+      then:
+        - uart.write: "<L0,7."
+        - binary_sensor.template.publish:
+            id: megadesk_moving
+            state: ON
+            
+  - platform: template
+    name: "Memory Position 08"
+    icon: "mdi:numeric-8-circle"
+    on_press:
+      then:
+        - uart.write: "<L0,8."
+        - binary_sensor.template.publish:
+            id: megadesk_moving
+            state: ON
+            
+  - platform: template
+    name: "Memory Position 09"
+    icon: "mdi:numeric-9-circle"
+    on_press:
+      then:
+        - uart.write: "<L0,9."
+        - binary_sensor.template.publish:
+            id: megadesk_moving
+            state: ON
+            
+  - platform: template
+    name: "Memory Position 10"
+    icon: "mdi:numeric-0-circle"
+    on_press:
+      then:
+        - uart.write: "<L0,10."
+        - binary_sensor.template.publish:
+            id: megadesk_moving
+            state: ON
+
+  # Configuration buttons with better icons
+  - platform: template
+    name: "Toggle Minimum Desk Height"
+    icon: "mdi:toggle-switch"
+    on_press:
+      then:
+        - uart.write: "<L0,11."
+        - uart.write: "<R0,11."
+        
+  - platform: template
+    name: "Toggle Maximum Desk Height"
+    icon: "mdi:toggle-switch-off"
+    on_press:
+      then:
+        - uart.write: "<L0,12."
+        - uart.write: "<R0,12."
+        
+  - platform: template
+    name: "Recalibrate Desk"
+    icon: "mdi:crosshairs-gps"
+    on_press:
+      then:
+        - uart.write: "<L0,14."
+        
+  - platform: template
+    name: "Reboot"
+    icon: "mdi:restart"
+    on_press:
+      then:
+        - uart.write: "<L0,15."
+        
+  - platform: template
+    name: "Toggle audio-feedback mode"
+    icon: "mdi:volume-high"
+    on_press:
+      then:
+        - uart.write: "<L0,17."
+        
+  - platform: template
+    name: "Toggle both-button mode"
+    icon: "mdi:radiobox-indeterminate-variant"
+    on_press:
+      then:
+        - uart.write: "<L0,18."
+
+# Periodically update values every 5 minutes
+interval:
+  - interval: 300s
+    then:
+      - uart.write: "<C0.0." 
